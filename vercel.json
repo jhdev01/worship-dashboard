@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/((?!assets|data\\.csv|photos\\.csv|favicon).*)", "destination": "/index.html" }
+  ]
+}
