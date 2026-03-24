@@ -8,7 +8,8 @@ const pD=d=>{if(!d)return null;const p=String(d).split("-");if(p.length===3)retu
 const fD=d=>{const dt=pD(d);return dt?dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):String(d||"");};
 const $="'DM Sans',sans-serif";
 const CD={background:"rgba(250,247,242,0.03)",borderRadius:14,padding:22,border:"1px solid rgba(250,247,242,0.06)"};
-const SL={background:"rgba(250,247,242,0.05)",border:"1px solid rgba(250,247,242,0.08)",borderRadius:7,color:"#faf7f2",padding:"7px 11px",fontSize:12,outline:"none",fontFamily:$};
+const SL={background:"rgba(250,247,242,0.05)",border:"1px solid rgba(250,247,242,0.08)",borderRadius:7,color:"#faf7f2",padding:"7px 11px",fontSize:12,outline:"none",fontFamily:$,colorScheme:"dark"};
+const OPT={background:"#1c1917",color:"#faf7f2"};
 const TH0={textAlign:"left",padding:"8px 10px",borderBottom:"1px solid rgba(250,247,242,0.08)",color:"rgba(250,247,242,0.35)",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:.5};
 const TD={padding:"7px 10px",color:"rgba(250,247,242,0.6)"};
 const tg=(c,bg)=>({background:bg||"rgba(250,247,242,0.04)",borderRadius:5,padding:"2px 9px",fontSize:12,fontWeight:600,color:c||"rgba(250,247,242,0.55)",display:"inline-block"});
@@ -221,7 +222,7 @@ export default function App(){
     return(
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
         <select value={showCustomDate?"Custom":datePreset} onChange={e=>handleDatePreset(e.target.value)} style={SL}>
-          {presetLabels.map(l=><option key={l} value={l}>{l}</option>)}
+          {presetLabels.map(l=><option key={l} value={l} style={OPT}>{l}</option>)}
         </select>
         {showCustomDate&&<>
           <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setDatePreset("Custom");}} style={{...SL,width:140}} />
@@ -414,8 +415,8 @@ export default function App(){
       <div style={{display:"flex",alignItems:"baseline",gap:10}}><span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:"#D4845A",fontFamily:$,fontWeight:600}}>Worship</span><h1 style={{fontSize:20,fontWeight:400,margin:0}}>Dashboard</h1></div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         <DateRangeFilter/>
-        <select value={lf} onChange={e=>setLf(e.target.value)} style={SL}>{allLeaders.map(l=><option key={l} value={l}>{l==="All"?"All Leaders":l}</option>)}</select>
-        <select value={kf} onChange={e=>setKf(e.target.value)} style={SL}>{allKeys.map(k=><option key={k} value={k}>{k==="All"?"All Keys":`Key: ${k}`}</option>)}</select>
+        <select value={lf} onChange={e=>setLf(e.target.value)} style={SL}>{allLeaders.map(l=><option key={l} value={l} style={OPT}>{l==="All"?"All Leaders":l}</option>)}</select>
+        <select value={kf} onChange={e=>setKf(e.target.value)} style={SL}>{allKeys.map(k=><option key={k} value={k} style={OPT}>{k==="All"?"All Keys":`Key: ${k}`}</option>)}</select>
         <input type="text" placeholder="Search songs..." value={search} onChange={e=>setSearch(e.target.value)} style={{...SL,width:150}}/>
       </div></div>
     <div style={{display:"flex",gap:2,padding:"10px 24px",borderBottom:"1px solid rgba(250,247,242,0.06)",overflowX:"auto"}}>
