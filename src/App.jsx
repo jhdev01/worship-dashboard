@@ -4,10 +4,10 @@ import{BarChart,Bar,XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer,PieCha
 
 const ThemeCtx=createContext();const useT=()=>useContext(ThemeCtx);
 const TH_DARK={bg:"#0a0a0a",card:"rgba(255,255,255,0.04)",cb:"rgba(255,255,255,0.07)",tx:"#fff",t2:"rgba(255,255,255,0.65)",t3:"rgba(255,255,255,0.35)",t4:"rgba(255,255,255,0.18)",sb:"rgba(255,255,255,0.06)",sbb:"rgba(255,255,255,0.12)",ob:"#141414",oc:"#fff",gr:"rgba(255,255,255,0.06)",hb:"rgba(255,255,255,0.2)",tb:"#1a1a1a",tbb:"rgba(255,255,255,0.12)",cs:"dark",abg:"rgba(255,255,255,0.08)",ac:"rgba(255,255,255,0.3)"};
-const TH_LIGHT={bg:"#f4f4f5",card:"rgba(0,0,0,0.025)",cb:"rgba(0,0,0,0.08)",tx:"#111",t2:"rgba(0,0,0,0.6)",t3:"rgba(0,0,0,0.38)",t4:"rgba(0,0,0,0.18)",sb:"rgba(0,0,0,0.04)",sbb:"rgba(0,0,0,0.12)",ob:"#fff",oc:"#111",gr:"rgba(0,0,0,0.07)",hb:"rgba(0,0,0,0.15)",tb:"#fff",tbb:"rgba(0,0,0,0.1)",cs:"light",abg:"rgba(0,0,0,0.06)",ac:"rgba(0,0,0,0.3)"};
-// Full rainbow from the image: red, orange, yellow, lime, green, emerald, teal, cyan, blue, indigo, purple, magenta
-const P=["#E85D5D","#E8853D","#E8CF3D","#8DD43E","#3DCC5C","#3DD4A0","#3DD4D4","#3DA5E8","#3D6EE8","#7B3DE8","#C53DE8","#E83DA5","#F97066","#F5B731","#22D3EE"];
-const KC={A:"#E85D5D",B:"#3DCC5C",C:"#3DA5E8",D:"#E8CF3D",E:"#E8853D",F:"#7B3DE8",G:"#3DD4A0","Ab":"#E83DA5","A#":"#E83DA5","Bb":"#3DD4D4","C#":"#C53DE8","Db":"#3D6EE8","D#":"#F97066","Eb":"#8DD43E","F#":"#F5B731","G#":"#22D3EE","Gb":"#22D3EE"};
+const TH_LIGHT={bg:"#f4f4f5",card:"rgba(0,0,0,0.025)",cb:"rgba(0,0,0,0.08)",tx:"#111",t2:"rgba(0,0,0,0.75)",t3:"rgba(0,0,0,0.52)",t4:"rgba(0,0,0,0.28)",sb:"rgba(0,0,0,0.04)",sbb:"rgba(0,0,0,0.12)",ob:"#fff",oc:"#111",gr:"rgba(0,0,0,0.07)",hb:"rgba(0,0,0,0.15)",tb:"#fff",tbb:"rgba(0,0,0,0.1)",cs:"light",abg:"rgba(0,0,0,0.06)",ac:"rgba(0,0,0,0.4)"};
+// Refined palette — colorful but not neon, shuffled for variety
+const P=["#5B8DEF","#E0695A","#45B87F","#9B6DD7","#D4A843","#5BBFCF","#D47B4A","#7C7CE0","#4CB89B","#CF5B8D","#7BAF4A","#4A7DD4","#D46B6B","#4ACFB8","#BF8F3D"];
+const KC={A:"#E0695A",B:"#45B87F",C:"#5B8DEF",D:"#D4A843",E:"#D47B4A",F:"#9B6DD7",G:"#4CB89B","Ab":"#CF5B8D","A#":"#CF5B8D","Bb":"#5BBFCF","C#":"#7C7CE0","Db":"#4A7DD4","D#":"#D46B6B","Eb":"#7BAF4A","F#":"#BF8F3D","G#":"#4ACFB8","Gb":"#4ACFB8"};
 const $="'Inter',system-ui,sans-serif";
 const pD=d=>{if(!d)return null;const p=String(d).split("-");if(p.length===3)return new Date(+p[0],+p[1]-1,+p[2]);return null;};
 const fD=d=>{const dt=pD(d);return dt?dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):String(d||"");};
@@ -21,7 +21,7 @@ function TH({label,field,so}){const t=useT();return<th onClick={()=>so.tog(field
 function CTT({active,payload,label}){const t=useT();return active&&payload?.length?<div style={{background:t.tb,border:`1px solid ${t.tbb}`,borderRadius:10,padding:"10px 14px",fontSize:12,color:t.tx,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}><div style={{fontWeight:700,marginBottom:4}}>{label}</div>{payload.map((p,i)=><div key={i} style={{color:p.color||P[0]}}>{p.name}: {p.value}</div>)}</div>:null}
 
 export default function App(){
-  const[mode,setMode]=useState(()=>{try{return localStorage.getItem("wd-theme")||"dark"}catch{return"dark"}});
+  const[mode,setMode]=useState(()=>{try{return localStorage.getItem("wd-theme")||"light"}catch{return"light"}});
   const t=mode==="dark"?TH_DARK:TH_LIGHT;
   const tog=()=>{const n=mode==="dark"?"light":"dark";setMode(n);try{localStorage.setItem("wd-theme",n)}catch{}};
   const[data,setData]=useState(null);const[photos,setPhotos]=useState({});
