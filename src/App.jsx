@@ -15,6 +15,23 @@ const tg=(c,bg)=>({background:bg||"rgba(250,247,242,0.04)",borderRadius:5,paddin
 const lk={cursor:"pointer",textDecoration:"underline",textDecorationColor:"rgba(250,247,242,0.2)",textUnderlineOffset:2};
 const CT=({active,payload,label})=>active&&payload?.length?<div style={{background:"#1c1917",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#fff"}}><div style={{fontWeight:600,marginBottom:3}}>{label}</div>{payload.map((p,i)=><div key={i} style={{color:p.color||P[0]}}>{p.name}: {p.value}</div>)}</div>:null;
 
+// Date range helpers
+function getDatePresets(){
+  const now=new Date();
+  const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const today=fmt(now);
+  const daysAgo=n=>{const d=new Date(now);d.setDate(d.getDate()-n);return fmt(d);};
+  const monthsAgo=n=>{const d=new Date(now);d.setMonth(d.getMonth()-n);return fmt(d);};
+  return[
+    {label:"All Time",from:null,to:null},
+    {label:"Last 7 Days",from:daysAgo(7),to:today},
+    {label:"Last 30 Days",from:daysAgo(30),to:today},
+    {label:"Last 3 Months",from:monthsAgo(3),to:today},
+    {label:"Last 6 Months",from:monthsAgo(6),to:today},
+    {label:"Last Year",from:monthsAgo(12),to:today},
+  ];
+}
+
 function useSort(defaultField,defaultDir="desc"){
   const [s,setS]=useState({f:defaultField,d:defaultDir});
   const toggle=useCallback(f=>setS(prev=>({f,d:prev.f===f&&prev.d==="desc"?"asc":"desc"})),[]);
@@ -37,15 +54,23 @@ export default function App(){
   const [lf,setLf]=useState("All");
   const [kf,setKf]=useState("All");
   const [search,setSearch]=useState("");
-  const [sel,setSel]=useState({type:null,val:null});
+  const [sel,setSel]=useState({type:null,val:null,extra:null});
   const [loading,setLoading]=useState(true);
+  // Date range state
+  const [datePreset,setDatePreset]=useState("All Time");
+  const [dateFrom,setDateFrom]=useState("");
+  const [dateTo,setDateTo]=useState("");
+  const [showCustomDate,setShowCustomDate]=useState(false);
+
   const songS=useSort("count");
   const histS=useSort("date");
   const ldrSongS=useSort("count");
   const ldrHistS=useSort("date");
   const songHistS=useSort("date");
-  const go=(t,v)=>{setSel({type:t,val:v});window.scrollTo(0,0);};
-  const back=()=>setSel({type:null,val:null});
+  const keySongS=useSort("count");
+  const rosterS=useSort("date");
+  const go=(t,v,extra)=>{setSel({type:t,val:v,extra:extra||null});window.scrollTo(0,0);};
+  const back=()=>setSel({type:null,val:null,extra:null});
 
   const loadCSV=(text)=>{
     const r=Papa.parse(text,{header:true,skipEmptyLines:true});const h=r.meta.fields||[];
@@ -54,7 +79,6 @@ export default function App(){
       band:bc.reduce((o,c)=>{if(r[c])o[c.replace("Band: ","")]=r[c];return o;},{}),prod:pc.reduce((o,c)=>{if(r[c])o[c.replace("Prod: ","")]=r[c];return o;},{})})),bandCols:bc.map(c=>c.replace("Band: ","")),prodCols:pc.map(c=>c.replace("Prod: ",""))});
   };
 
-  // Auto-load data on mount
   useEffect(()=>{
     Promise.all([
       fetch("/data.csv").then(r=>r.ok?r.text():null).catch(()=>null),
@@ -70,7 +94,25 @@ export default function App(){
     });
   },[]);
 
-  const filtered=useMemo(()=>{if(!data)return[];let r=[...data.rows];if(lf!=="All")r=r.filter(x=>x.leader1===lf||x.leader2===lf);if(kf!=="All")r=r.filter(x=>x.key===kf);if(search)r=r.filter(x=>x.title.toLowerCase().includes(search.toLowerCase()));return r;},[data,lf,kf,search]);
+  const handleDatePreset=(label)=>{
+    setDatePreset(label);
+    if(label==="Custom"){setShowCustomDate(true);return;}
+    setShowCustomDate(false);
+    const presets=getDatePresets();
+    const p=presets.find(x=>x.label===label);
+    if(p){setDateFrom(p.from||"");setDateTo(p.to||"");}
+  };
+
+  const filtered=useMemo(()=>{
+    if(!data)return[];
+    let r=[...data.rows];
+    if(dateFrom)r=r.filter(x=>x.date>=dateFrom);
+    if(dateTo)r=r.filter(x=>x.date<=dateTo);
+    if(lf!=="All")r=r.filter(x=>x.leader1===lf||x.leader2===lf);
+    if(kf!=="All")r=r.filter(x=>x.key===kf);
+    if(search)r=r.filter(x=>x.title.toLowerCase().includes(search.toLowerCase()));
+    return r;
+  },[data,lf,kf,search,dateFrom,dateTo]);
 
   const stats=useMemo(()=>{
     if(!filtered.length)return null;
@@ -109,7 +151,7 @@ export default function App(){
       let co="";if(r.leader1&&r.leader2)co=r.leader1===nm?r.leader2:r.leader1;
       hist.push({date:r.date,title:r.title,key:r.key,coLeader:co,arrangement:r.arrangement});});
     return{name:nm,totalSongs:rows.length,uniqueSongs:Object.keys(sm).length,
-      songs:Object.entries(sm).sort((a,b)=>b[1].count-a[1].count).map(([t,d])=>({title:t,count:d.count,arrangement:d.arr,keys:Object.entries(d.keys).sort((a,b)=>b[1]-a[1]).map(([k,c])=>({key:k,count:c})),lastDate:d.dates.sort().reverse()[0],coLeaders:Object.entries(d.co).sort((a,b)=>b[1]-a[1]).map(([n,c])=>({name:n,count:c}))})),
+      songs:Object.entries(sm).sort((a,b)=>b[1].count-a[1].count).map(([t,d])=>({title:t,count:d.count,arrangement:d.arr,keys:Object.entries(d.keys).sort((a,b)=>b[1]-a[1]).map(([k,c])=>({key:k,count:c})),lastDate:d.dates.sort().reverse()[0],coLeaders:Object.entries(d.co).sort((a,b)=>b[1]-a[1]).map(([n,c])=>({name:n,count:c})),coLeadName:Object.entries(d.co).sort((a,b)=>b[1]-a[1])[0]?.[0]||""})),
       keys:Object.entries(km).sort((a,b)=>b[1]-a[1]).map(([k,c])=>({key:k,count:c})),history:hist,
       coLeaders:Object.entries(cm).sort((a,b)=>b[1]-a[1]).map(([n,c])=>({name:n,count:c})),
       soloCount:rows.filter(r=>!(r.leader1&&r.leader2)).length,duetCount:rows.filter(r=>r.leader1&&r.leader2).length};},[sel,data]);
@@ -118,11 +160,37 @@ export default function App(){
     const sm={},km={},lm={};rows.forEach(r=>{sm[r.title]=(sm[r.title]||0)+1;if(r.key)km[r.key]=(km[r.key]||0)+1;[r.leader1,r.leader2].filter(Boolean).forEach(l=>lm[l]=(lm[l]||0)+1);});
     return{name:sel.val,total:rows.length,songs:Object.entries(sm).sort((a,b)=>b[1]-a[1]).map(([t,c])=>({title:t,count:c})),keys:Object.entries(km).sort((a,b)=>b[1]-a[1]).map(([k,c])=>({key:k,count:c})),leaders:Object.entries(lm).sort((a,b)=>b[1]-a[1]).map(([n,c])=>({name:n,count:c}))};},[sel,data]);
 
+  const keyDetail=useMemo(()=>{
+    if(sel.type!=="key"||!data)return null;
+    const k=sel.val;const rows=filtered.filter(r=>r.key===k);
+    const sm={},lm={};
+    rows.forEach(r=>{
+      if(!sm[r.title])sm[r.title]={count:0,arrangement:r.arrangement||"",lastPlayed:"",leaders:{},topLeader:""};
+      sm[r.title].count++;
+      if(r.date>sm[r.title].lastPlayed)sm[r.title].lastPlayed=r.date;
+      [r.leader1,r.leader2].filter(Boolean).forEach(l=>{lm[l]=(lm[l]||0)+1;sm[r.title].leaders[l]=(sm[r.title].leaders[l]||0)+1;});
+    });
+    return{key:k,total:rows.length,uniqueSongs:Object.keys(sm).length,
+      songs:Object.entries(sm).sort((a,b)=>b[1].count-a[1].count).map(([t,d])=>({title:t,count:d.count,arrangement:d.arrangement,lastPlayed:d.lastPlayed,topLeader:Object.entries(d.leaders).sort((a,b)=>b[1]-a[1])[0]?.[0]||""})),
+      leaders:Object.entries(lm).sort((a,b)=>b[1]-a[1]).map(([n,c])=>({name:n,count:c}))};
+  },[sel,data,filtered]);
+
+  const leaderFilteredList=useMemo(()=>{
+    if(sel.type!=="leaderFilter"||!data||!sel.extra)return null;
+    const nm=sel.extra.leader;const filter=sel.extra.filter;
+    const rows=data.rows.filter(r=>r.leader1===nm||r.leader2===nm);
+    let result=[];
+    if(filter==="total"){result=rows.map(r=>({date:r.date,title:r.title,key:r.key,leader1:r.leader1,leader2:r.leader2,arrangement:r.arrangement}));}
+    else if(filter==="unique"){const seen=new Set();rows.forEach(r=>{if(!seen.has(r.title)){seen.add(r.title);result.push({date:r.date,title:r.title,key:r.key,leader1:r.leader1,leader2:r.leader2,arrangement:r.arrangement});}});}
+    else if(filter==="solo"){result=rows.filter(r=>!(r.leader1&&r.leader2)).map(r=>({date:r.date,title:r.title,key:r.key,leader1:r.leader1,leader2:r.leader2,arrangement:r.arrangement}));}
+    else if(filter==="coled"){result=rows.filter(r=>r.leader1&&r.leader2).map(r=>({date:r.date,title:r.title,key:r.key,leader1:r.leader1,leader2:r.leader2,arrangement:r.arrangement}));}
+    return{leader:nm,filter,title:filter==="total"?"All Songs Led":filter==="unique"?"Unique Songs":filter==="solo"?"Solo Songs":"Co-Led Songs",rows:result};
+  },[sel,data]);
+
   const allLeaders=useMemo(()=>{if(!data)return[];const s=new Set();data.rows.forEach(r=>{if(r.leader1)s.add(r.leader1);if(r.leader2)s.add(r.leader2);});return["All",...Array.from(s).sort()];},[data]);
   const allKeys=useMemo(()=>{if(!data)return[];const s=new Set();data.rows.forEach(r=>{if(r.key)s.add(r.key);});return["All",...Array.from(s).sort()];},[data]);
 
-  // Render helpers
-  const KL=({data:kd})=><div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:8}}>{kd.map((e,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,fontFamily:$,color:"rgba(250,247,242,0.5)"}}><div style={{width:10,height:10,borderRadius:3,background:KC[e.key]||P[i%P.length]}}/>{e.key} ({e.count})</div>)}</div>;
+  const KL=({data:kd,clickable})=><div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:8}}>{kd.map((e,i)=><div key={i} onClick={clickable?()=>go("key",e.key):undefined} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,fontFamily:$,color:"rgba(250,247,242,0.5)",cursor:clickable?"pointer":"default"}} onMouseEnter={clickable?ev=>ev.currentTarget.style.color="#faf7f2":undefined} onMouseLeave={clickable?ev=>ev.currentTarget.style.color="rgba(250,247,242,0.5)":undefined}><div style={{width:10,height:10,borderRadius:3,background:KC[e.key]||P[i%P.length]}}/>{e.key} ({e.count})</div>)}</div>;
   const HBar=({data:d,labelKey,valKey,valName,onItemClick,height})=>(
     <ResponsiveContainer width="100%" height={height||Math.max(150,d.length*34)}>
       <BarChart data={d} layout="vertical" margin={{left:140,right:16}} onClick={e=>{if(e&&e.activeLabel)onItemClick(e.activeLabel)}} style={{cursor:"pointer"}}>
@@ -132,16 +200,40 @@ export default function App(){
         <Tooltip content={<CT/>}/><Bar dataKey={valKey} name={valName} radius={[0,5,5,0]} cursor="pointer">{d.map((_,i)=><Cell key={i} fill={P[i%P.length]}/>)}</Bar>
       </BarChart></ResponsiveContainer>);
   const leaders2=r=>[r.leader1,r.leader2].filter(Boolean).map((l,li)=><span key={li}>{li>0&&" & "}<span onClick={()=>go("leader",l)} style={{color:"rgba(250,247,242,0.5)",...lk}}>{l}</span></span>);
-  const keyBadge=k=>k?<span style={tg(KC[k]||"#aaa",`${KC[k]||"#666"}22`)}>{k}</span>:null;
+  const keyBadge=k=>k?<span onClick={()=>go("key",k)} style={{...tg(KC[k]||"#aaa",`${KC[k]||"#666"}22`),cursor:"pointer"}}>{k}</span>:null;
   const artistLink=a=>a?<span onClick={()=>go("artist",a)} style={{color:"rgba(250,247,242,0.35)",fontSize:12,...lk}}>{a}</span>:null;
   const songLink=t=><span onClick={()=>go("song",t)} style={{...lk,color:"#faf7f2",fontWeight:500,fontFamily:"'Newsreader',serif"}}>{t}</span>;
   const dateLink=d=><span onClick={()=>go("date",d)} style={{...lk,color:"rgba(250,247,242,0.6)",whiteSpace:"nowrap"}}>{fD(d)}</span>;
   const avatar=name=>{const url=photos[name];return url?<img src={url} alt="" style={{width:32,height:32,borderRadius:16,objectFit:"cover",flexShrink:0}}/>:<div style={{width:32,height:32,borderRadius:16,background:"rgba(250,247,242,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"rgba(250,247,242,0.3)",fontFamily:$,flexShrink:0}}>{(name||"?")[0]}</div>;};
 
-  // Loading
+  const StatCard=({label,value,color,onClick,small})=>(
+    <div onClick={onClick} style={{...CD,textAlign:"center",flex:1,minWidth:small?110:130,cursor:onClick?"pointer":"default",transition:"border-color .2s"}}
+      onMouseEnter={onClick?e=>e.currentTarget.style.borderColor="rgba(212,132,90,0.3)":undefined}
+      onMouseLeave={onClick?e=>e.currentTarget.style.borderColor="rgba(250,247,242,0.06)":undefined}>
+      <div style={{fontSize:small?32:34,fontWeight:500,color}}>{value}</div>
+      <div style={{fontSize:12,color:"rgba(250,247,242,0.35)",fontFamily:$}}>{label}</div>
+      {onClick&&<div style={{fontSize:10,color:"rgba(250,247,242,0.2)",fontFamily:$,marginTop:4}}>Click to view</div>}
+    </div>
+  );
+
+  const DateRangeFilter=()=>{
+    const presetLabels=["All Time","Last 7 Days","Last 30 Days","Last 3 Months","Last 6 Months","Last Year","Custom"];
+    return(
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <select value={showCustomDate?"Custom":datePreset} onChange={e=>handleDatePreset(e.target.value)} style={SL}>
+          {presetLabels.map(l=><option key={l} value={l}>{l}</option>)}
+        </select>
+        {showCustomDate&&<>
+          <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setDatePreset("Custom");}} style={{...SL,width:140}} />
+          <span style={{color:"rgba(250,247,242,0.3)",fontSize:11}}>to</span>
+          <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setDatePreset("Custom");}} style={{...SL,width:140}} />
+        </>}
+      </div>
+    );
+  };
+
   if(loading)return <div style={{minHeight:"100vh",background:"#1c1917",display:"flex",alignItems:"center",justifyContent:"center",color:"#D4845A",fontFamily:$,fontSize:16}}>Loading worship data...</div>;
 
-  // No data — show upload
   if(!data)return(
     <div style={{minHeight:"100vh",background:"#1c1917",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Newsreader',Georgia,serif",padding:20}}>
       <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
@@ -162,20 +254,62 @@ export default function App(){
 
   // ===== DETAIL VIEWS =====
 
+  // KEY DETAIL
+  if(sel.type==="key"&&keyDetail){const kd=keyDetail;
+    const sortedKS=keySongS.sort(kd.songs,(x,f)=>{if(f==="count")return x.count;if(f==="title")return x.title;if(f==="lastPlayed")return x.lastPlayed;if(f==="topLeader")return x.topLeader;return x[f]||"";});
+    return wrap(<>{hdr(`Key of ${kd.key}`,"Key Detail")}
+    <div style={{padding:24,maxWidth:1200,margin:"0 auto",display:"flex",flexDirection:"column",gap:22}}>
+      <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+        <StatCard label="Times Played" value={kd.total} color={KC[kd.key]||"#D4845A"}/>
+        <StatCard label="Unique Songs" value={kd.uniqueSongs} color="#5B8A72"/>
+        <StatCard label="Leaders" value={kd.leaders.length} color="#6B94B0"/>
+      </div>
+      <div style={{display:"flex",gap:22,flexWrap:"wrap"}}>
+        <div style={{...CD,flex:2,minWidth:300}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Songs in {kd.key}</h3>
+          <HBar data={kd.songs.slice(0,15)} labelKey="title" valKey="count" valName="Times Played" onItemClick={t=>go("song",t)} height={Math.max(200,Math.min(kd.songs.length,15)*32)}/></div>
+        <div style={{...CD,flex:1,minWidth:220}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Leaders in This Key</h3>
+          {kd.leaders.map((l,i)=><div key={i} onClick={()=>go("leader",l.name)} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid rgba(250,247,242,0.04)",cursor:"pointer"}}>
+            {avatar(l.name)}<span style={{fontSize:13,color:"rgba(250,247,242,0.6)",fontFamily:$,flex:1}}>{l.name}</span>
+            <span style={{fontSize:12,color:"rgba(250,247,242,0.35)",fontFamily:$}}>{l.count}</span></div>)}</div>
+      </div>
+      <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>All Songs ({kd.songs.length})</h3>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,fontFamily:$}}>
+          <thead><tr><th {...keySongS.th("Song","title")}/><th {...keySongS.th("Artist","arrangement")}/><th {...keySongS.th("Qty","count")}/><th {...keySongS.th("Last Played","lastPlayed")}/><th {...keySongS.th("Top Leader","topLeader")}/></tr></thead>
+          <tbody>{sortedKS.map((x,i)=><tr key={i} style={{borderBottom:"1px solid rgba(250,247,242,0.04)"}}>
+            <td style={TD}>{songLink(x.title)}</td><td style={TD}>{artistLink(x.arrangement)}</td>
+            <td style={TD}><span style={tg("#D4845A","rgba(212,132,90,0.12)")}>{x.count}</span></td>
+            <td style={{...TD,fontSize:12,color:"rgba(250,247,242,0.4)"}}>{fD(x.lastPlayed)}</td>
+            <td style={TD}><span onClick={()=>x.topLeader&&go("leader",x.topLeader)} style={{color:"rgba(250,247,242,0.5)",...(x.topLeader?lk:{})}}>{x.topLeader}</span></td>
+          </tr>)}</tbody></table></div></div>
+    </div></>);}
+
+  // LEADER FILTERED LIST
+  if(sel.type==="leaderFilter"&&leaderFilteredList){const lfl=leaderFilteredList;
+    return wrap(<>{hdr(`${lfl.title} — ${lfl.leader}`,"Leader Detail",lfl.leader)}
+    <div style={{padding:24,maxWidth:1200,margin:"0 auto",display:"flex",flexDirection:"column",gap:22}}>
+      <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>{lfl.title} ({lfl.rows.length})</h3>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,fontFamily:$}}>
+          <thead><tr><th style={TH0}>Date</th><th style={TH0}>Song</th><th style={TH0}>Key</th><th style={TH0}>Leader(s)</th><th style={TH0}>Arrangement</th></tr></thead>
+          <tbody>{lfl.rows.sort((a,b)=>b.date.localeCompare(a.date)).map((r,i)=><tr key={i} style={{borderBottom:"1px solid rgba(250,247,242,0.04)"}}>
+            <td style={TD}>{dateLink(r.date)}</td><td style={TD}>{songLink(r.title)}</td><td style={TD}>{keyBadge(r.key)}</td>
+            <td style={TD}>{leaders2(r)}</td><td style={{...TD,color:"rgba(250,247,242,0.3)",fontSize:12}}>{r.arrangement}</td></tr>)}</tbody></table></div></div>
+    </div></>);}
+
   // ARTIST
   if(sel.type==="artist"&&artistDetail){const ad=artistDetail;return wrap(<>{hdr(ad.name,"Artist")}
     <div style={{padding:24,maxWidth:1200,margin:"0 auto",display:"flex",flexDirection:"column",gap:22}}>
       <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
-        {[{l:"Times Played",v:ad.total,c:"#D4845A"},{l:"Songs",v:ad.songs.length,c:"#5B8A72"},{l:"Leaders",v:ad.leaders.length,c:"#6B94B0"}].map((x,i)=>
-          <div key={i} style={{...CD,textAlign:"center",flex:1,minWidth:120}}><div style={{fontSize:32,fontWeight:500,color:x.c}}>{x.v}</div><div style={{fontSize:12,color:"rgba(250,247,242,0.35)",fontFamily:$}}>{x.l}</div></div>)}
+        <StatCard label="Times Played" value={ad.total} color="#D4845A"/>
+        <StatCard label="Songs" value={ad.songs.length} color="#5B8A72"/>
+        <StatCard label="Leaders" value={ad.leaders.length} color="#6B94B0"/>
       </div>
       <div style={{display:"flex",gap:22,flexWrap:"wrap"}}>
         <div style={{...CD,flex:1,minWidth:260}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Songs</h3>
           <HBar data={ad.songs.slice(0,10)} labelKey="title" valKey="count" valName="Plays" onItemClick={t=>go("song",t)}/></div>
         <div style={{...CD,flex:1,minWidth:220}}>
           {ad.keys.length>0&&<><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Keys</h3>
-            <ResponsiveContainer width="100%" height={160}><PieChart><Pie data={ad.keys} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={60} innerRadius={25}>
-              {ad.keys.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={ad.keys}/></>}
+            <ResponsiveContainer width="100%" height={160}><PieChart><Pie data={ad.keys} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={60} innerRadius={25} onClick={(d)=>{if(d&&d.key)go("key",d.key)}} style={{cursor:"pointer"}}>
+              {ad.keys.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]} style={{cursor:"pointer"}}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={ad.keys} clickable/></>}
           <h3 style={{margin:"20px 0 10px",fontWeight:400,fontSize:17}}>Leaders</h3>
           {ad.leaders.map((l,i)=><div key={i} onClick={()=>go("leader",l.name)} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid rgba(250,247,242,0.04)",cursor:"pointer"}}>
             {avatar(l.name)}<span style={{fontSize:13,color:"rgba(250,247,242,0.6)",fontFamily:$,flex:1}}>{l.name}</span>
@@ -220,8 +354,8 @@ export default function App(){
         <div style={{...CD,flex:1,minWidth:260}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Who Leads This Song</h3>
           {sd.leaders.length>0&&<HBar data={sd.leaders} labelKey="name" valKey="count" valName="Times Led" onItemClick={n=>go("leader",n)}/>}</div>
         <div style={{...CD,flex:1,minWidth:220}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Keys</h3>
-          {sd.keys.length>0&&<><ResponsiveContainer width="100%" height={160}><PieChart><Pie data={sd.keys} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={60} innerRadius={25}>
-            {sd.keys.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={sd.keys}/></>}</div>
+          {sd.keys.length>0&&<><ResponsiveContainer width="100%" height={160}><PieChart><Pie data={sd.keys} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={60} innerRadius={25} onClick={(d)=>{if(d&&d.key)go("key",d.key)}} style={{cursor:"pointer"}}>
+            {sd.keys.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]} style={{cursor:"pointer"}}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={sd.keys} clickable/></>}</div>
       </div>
       <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Every Time Played ({sd.history.length})</h3>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,fontFamily:$}}>
@@ -233,13 +367,16 @@ export default function App(){
 
   // LEADER
   if(sel.type==="leader"&&leaderDetail){const ld=leaderDetail;
-    const sortedS=ldrSongS.sort(ld.songs,(x,f)=>{if(f==="count")return x.count;if(f==="title")return x.title;if(f==="lastDate")return x.lastDate;return x[f]||"";});
+    const sortedS=ldrSongS.sort(ld.songs,(x,f)=>{if(f==="count")return x.count;if(f==="title")return x.title;if(f==="lastDate")return x.lastDate;if(f==="coLeadName")return x.coLeadName;return x[f]||"";});
     const sortedH=ldrHistS.sort(ld.history,(x,f)=>x[f]||"");
+    const goFilter=(filter)=>go("leaderFilter",filter,{leader:ld.name,filter});
     return wrap(<>{hdr(ld.name,"Leader Profile",ld.name)}
     <div style={{padding:24,maxWidth:1200,margin:"0 auto",display:"flex",flexDirection:"column",gap:22}}>
       <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
-        {[{l:"Total Led",v:ld.totalSongs,c:"#D4845A"},{l:"Unique Songs",v:ld.uniqueSongs,c:"#5B8A72"},{l:"Solo",v:ld.soloCount,c:"#6B94B0"},{l:"Co-Led",v:ld.duetCount,c:"#A67B5B"}].map((x,i)=>
-          <div key={i} style={{...CD,textAlign:"center",flex:1,minWidth:110}}><div style={{fontSize:32,fontWeight:500,color:x.c}}>{x.v}</div><div style={{fontSize:12,color:"rgba(250,247,242,0.35)",fontFamily:$}}>{x.l}</div></div>)}
+        <StatCard label="Total Led" value={ld.totalSongs} color="#D4845A" onClick={()=>goFilter("total")} small/>
+        <StatCard label="Unique Songs" value={ld.uniqueSongs} color="#5B8A72" onClick={()=>goFilter("unique")} small/>
+        <StatCard label="Solo" value={ld.soloCount} color="#6B94B0" onClick={()=>goFilter("solo")} small/>
+        <StatCard label="Co-Led" value={ld.duetCount} color="#A67B5B" onClick={()=>goFilter("coled")} small/>
       </div>
       {ld.coLeaders.length>0&&<div style={CD}><h3 style={{margin:"0 0 12px",fontWeight:400,fontSize:17}}>Co-Leads With</h3>
         <div style={{display:"flex",flexWrap:"wrap",gap:10}}>{ld.coLeaders.map((cl,i)=><div key={i} onClick={()=>go("leader",cl.name)} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(250,247,242,0.04)",borderRadius:10,padding:"10px 16px",cursor:"pointer",border:"1px solid rgba(250,247,242,0.06)"}}
@@ -250,16 +387,16 @@ export default function App(){
         <div style={{...CD,flex:2,minWidth:300}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Top Songs</h3>
           <HBar data={ld.songs.slice(0,12)} labelKey="title" valKey="count" valName="Times Led" onItemClick={t=>go("song",t)} height={Math.max(200,Math.min(ld.songs.length,12)*32)}/></div>
         <div style={{...CD,flex:1,minWidth:220}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Keys</h3>
-          <ResponsiveContainer width="100%" height={160}><PieChart><Pie data={ld.keys} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={60} innerRadius={25}>
-            {ld.keys.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={ld.keys}/></div>
+          <ResponsiveContainer width="100%" height={160}><PieChart><Pie data={ld.keys} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={60} innerRadius={25} onClick={(d)=>{if(d&&d.key)go("key",d.key)}} style={{cursor:"pointer"}}>
+            {ld.keys.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]} style={{cursor:"pointer"}}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={ld.keys} clickable/></div>
       </div>
       <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>All Songs</h3>
         <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,fontFamily:$}}>
-          <thead><tr><th {...ldrSongS.th("Song","title")}/><th {...ldrSongS.th("Artist","arrangement")}/><th {...ldrSongS.th("×","count")}/><th style={TH0}>Keys</th><th style={TH0}>Co-Led</th><th {...ldrSongS.th("Last","lastDate")}/></tr></thead>
+          <thead><tr><th {...ldrSongS.th("Song","title")}/><th {...ldrSongS.th("Artist","arrangement")}/><th {...ldrSongS.th("Qty","count")}/><th {...ldrSongS.th("Keys","topKey")}/><th {...ldrSongS.th("Co-Led","coLeadName")}/><th {...ldrSongS.th("Last","lastDate")}/></tr></thead>
           <tbody>{sortedS.map((x,i)=><tr key={i} style={{borderBottom:"1px solid rgba(250,247,242,0.04)"}}>
             <td style={TD}>{songLink(x.title)}</td><td style={TD}>{artistLink(x.arrangement)}</td>
             <td style={TD}><span style={tg("#D4845A","rgba(212,132,90,0.12)")}>{x.count}</span></td>
-            <td style={TD}><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{x.keys.map((k,ki)=><span key={ki} style={tg(KC[k.key]||"#aaa",`${KC[k.key]||"#666"}22`)}>{k.key}{k.count>1?`×${k.count}`:""}</span>)}</div></td>
+            <td style={TD}><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{x.keys.map((k,ki)=><span key={ki} onClick={()=>go("key",k.key)} style={{...tg(KC[k.key]||"#aaa",`${KC[k.key]||"#666"}22`),cursor:"pointer"}}>{k.key}{k.count>1?` ×${k.count}`:""}</span>)}</div></td>
             <td style={TD}>{x.coLeaders.length>0?x.coLeaders.map((cl,ci)=><span key={ci} onClick={()=>go("leader",cl.name)} style={{...tg("#A67B5B","rgba(166,123,91,0.12)"),cursor:"pointer",marginRight:3}}>{cl.name}</span>):<span style={{fontSize:12,color:"rgba(250,247,242,0.2)"}}>Solo</span>}</td>
             <td style={{...TD,fontSize:12,color:"rgba(250,247,242,0.4)"}}>{fD(x.lastDate)}</td></tr>)}</tbody></table></div></div>
       <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>History</h3>
@@ -276,6 +413,7 @@ export default function App(){
     <div style={{padding:"16px 24px",borderBottom:"1px solid rgba(250,247,242,0.06)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
       <div style={{display:"flex",alignItems:"baseline",gap:10}}><span style={{fontSize:11,letterSpacing:3,textTransform:"uppercase",color:"#D4845A",fontFamily:$,fontWeight:600}}>Worship</span><h1 style={{fontSize:20,fontWeight:400,margin:0}}>Dashboard</h1></div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <DateRangeFilter/>
         <select value={lf} onChange={e=>setLf(e.target.value)} style={SL}>{allLeaders.map(l=><option key={l} value={l}>{l==="All"?"All Leaders":l}</option>)}</select>
         <select value={kf} onChange={e=>setKf(e.target.value)} style={SL}>{allKeys.map(k=><option key={k} value={k}>{k==="All"?"All Keys":`Key: ${k}`}</option>)}</select>
         <input type="text" placeholder="Search songs..." value={search} onChange={e=>setSearch(e.target.value)} style={{...SL,width:150}}/>
@@ -288,15 +426,17 @@ export default function App(){
 
       :view==="overview"?<div style={{display:"flex",flexDirection:"column",gap:22}}>
         <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
-          {[{l:"Songs Played",v:stats.total,c:"#D4845A"},{l:"Unique Songs",v:stats.uniqueSongs,c:"#5B8A72"},{l:"Leaders",v:stats.uniqueLeaders,c:"#6B94B0"},{l:"Keys",v:stats.keyData.length,c:"#A67B5B"}].map((x,i)=>
-            <div key={i} style={{...CD,textAlign:"center",flex:1,minWidth:130}}><div style={{fontSize:34,fontWeight:500,color:x.c}}>{x.v}</div><div style={{fontSize:12,color:"rgba(250,247,242,0.35)",fontFamily:$}}>{x.l}</div></div>)}
+          <StatCard label="Songs Played" value={stats.total} color="#D4845A" onClick={()=>setView("history")}/>
+          <StatCard label="Unique Songs" value={stats.uniqueSongs} color="#5B8A72" onClick={()=>setView("songs")}/>
+          <StatCard label="Leaders" value={stats.uniqueLeaders} color="#6B94B0" onClick={()=>setView("leaders")}/>
+          <StatCard label="Keys" value={stats.keyData.length} color="#A67B5B" onClick={()=>setView("keys")}/>
         </div>
         <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Most Played Songs</h3>
           <HBar data={stats.topSongs.slice(0,10)} labelKey="title" valKey="count" valName="Times Played" onItemClick={t=>go("song",t)} height={320}/></div>
         <div style={{display:"flex",gap:22,flexWrap:"wrap"}}>
           <div style={{...CD,flex:1,minWidth:260}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Key Distribution</h3>
-            <ResponsiveContainer width="100%" height={200}><PieChart><Pie data={stats.keyData} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={75} innerRadius={38}>
-              {stats.keyData.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={stats.keyData}/></div>
+            <ResponsiveContainer width="100%" height={200}><PieChart><Pie data={stats.keyData} dataKey="count" nameKey="key" cx="50%" cy="50%" outerRadius={75} innerRadius={38} onClick={(d)=>{if(d&&d.key)go("key",d.key)}} style={{cursor:"pointer"}}>
+              {stats.keyData.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]} style={{cursor:"pointer"}}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></ResponsiveContainer><KL data={stats.keyData} clickable/></div>
           <div style={{...CD,flex:1,minWidth:260}}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Song Leaders</h3>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={stats.leaderData.slice(0,8)} margin={{left:0,right:16}} onClick={e=>{if(e&&e.activeLabel)go("leader",e.activeLabel)}} style={{cursor:"pointer"}}>
@@ -309,7 +449,7 @@ export default function App(){
 
       :view==="songs"?<div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>All Songs ({sortedSongs.length})</h3>
         <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13,fontFamily:$}}>
-          <thead><tr><th {...songS.th("Song","title")}/><th {...songS.th("Artist","arrangement")}/><th {...songS.th("Plays","count")}/><th {...songS.th("Last Played","lastPlayed")}/><th {...songS.th("Key","topKey")}/><th {...songS.th("Top Leader","topLeader")}/></tr></thead>
+          <thead><tr><th {...songS.th("Song","title")}/><th {...songS.th("Artist","arrangement")}/><th {...songS.th("Qty","count")}/><th {...songS.th("Last Played","lastPlayed")}/><th {...songS.th("Key","topKey")}/><th {...songS.th("Top Leader","topLeader")}/></tr></thead>
           <tbody>{sortedSongs.map((x,i)=><tr key={i} style={{borderBottom:"1px solid rgba(250,247,242,0.04)"}}>
             <td style={TD}>{songLink(x.title)}</td><td style={TD}>{artistLink(x.arrangement)}</td>
             <td style={TD}><span style={tg("#D4845A","rgba(212,132,90,0.12)")}>{x.count}</span></td>
@@ -331,13 +471,14 @@ export default function App(){
 
       :view==="keys"?<div style={{display:"flex",flexDirection:"column",gap:22}}>
         <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Songs by Key</h3>
-          <ResponsiveContainer width="100%" height={300}><BarChart data={stats.keyData}><CartesianGrid strokeDasharray="3 3" stroke="rgba(250,247,242,0.05)"/>
+          <ResponsiveContainer width="100%" height={300}><BarChart data={stats.keyData} onClick={e=>{if(e&&e.activeLabel)go("key",e.activeLabel)}} style={{cursor:"pointer"}}><CartesianGrid strokeDasharray="3 3" stroke="rgba(250,247,242,0.05)"/>
             <XAxis dataKey="key" tick={{fill:"rgba(250,247,242,0.55)",fontSize:13,fontFamily:$}}/><YAxis tick={{fill:"rgba(250,247,242,0.35)",fontSize:11,fontFamily:$}} allowDecimals={false}/>
-            <Tooltip content={<CT/>}/><Bar dataKey="count" name="Songs" radius={[5,5,0,0]}>{stats.keyData.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]}/>)}</Bar></BarChart></ResponsiveContainer></div>
+            <Tooltip content={<CT/>}/><Bar dataKey="count" name="Songs" radius={[5,5,0,0]} cursor="pointer">{stats.keyData.map((e,i)=><Cell key={i} fill={KC[e.key]||P[i%P.length]}/>)}</Bar></BarChart></ResponsiveContainer></div>
         <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Songs in Each Key</h3>
-          {stats.keyData.map((kd,ki)=>{const sgs={};filtered.forEach(r=>{if(r.key===kd.key)sgs[r.title]=(sgs[r.title]||0)+1;});const top=Object.entries(sgs).sort((a,b)=>b[1]-a[1]).slice(0,8);
-            return <div key={ki} style={{marginBottom:14}}><div style={{fontWeight:600,marginBottom:6,color:KC[kd.key]||P[ki%P.length],fontFamily:$,fontSize:14}}>Key of {kd.key} — {kd.count}</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{top.map(([t,c],si)=><span key={si} onClick={()=>go("song",t)} style={{background:"rgba(250,247,242,0.04)",borderRadius:5,padding:"3px 10px",fontSize:12,color:"rgba(250,247,242,0.55)",fontFamily:$,cursor:"pointer"}}>{t} ({c}x)</span>)}</div></div>;})}</div></div>
+          {stats.keyData.map((kd,ki)=>{const sgs={};filtered.forEach(r=>{if(r.key===kd.key)sgs[r.title]=(sgs[r.title]||0)+1;});const allSongs=Object.entries(sgs).sort((a,b)=>b[1]-a[1]);
+            return <div key={ki} style={{marginBottom:14}}>
+              <div onClick={()=>go("key",kd.key)} style={{fontWeight:600,marginBottom:6,color:KC[kd.key]||P[ki%P.length],fontFamily:$,fontSize:14,cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.textDecoration="underline"} onMouseLeave={e=>e.currentTarget.style.textDecoration="none"}>Key of {kd.key} — {kd.count} plays, {allSongs.length} songs</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{allSongs.map(([t,c],si)=><span key={si} onClick={()=>go("song",t)} style={{background:"rgba(250,247,242,0.04)",borderRadius:5,padding:"3px 10px",fontSize:12,color:"rgba(250,247,242,0.55)",fontFamily:$,cursor:"pointer"}}>{t} ({c}x)</span>)}</div></div>;})}</div></div>
 
       :view==="timeline"?<div style={{display:"flex",flexDirection:"column",gap:22}}>
         <div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Songs Per Month</h3>
@@ -351,8 +492,10 @@ export default function App(){
 
       :view==="roster"?<div style={CD}><h3 style={{margin:"0 0 14px",fontWeight:400,fontSize:17}}>Weekly Roster</h3>
         <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12,fontFamily:$}}>
-          <thead><tr><th style={TH0}>Date</th>{data.bandCols.map(c=><th key={c} style={{...TH0,color:"#D4845A"}}>{c}</th>)}{data.prodCols.map(c=><th key={c} style={{...TH0,color:"#6B94B0"}}>{c}</th>)}</tr></thead>
-          <tbody>{(()=>{const seen=new Set();return filtered.filter(r=>{if(seen.has(r.date))return false;seen.add(r.date);return true;}).sort((a,b)=>b.date.localeCompare(a.date)).map((r,i)=>
+          <thead><tr><th {...rosterS.th("Date","date")}/>{data.bandCols.map(c=><th key={c} style={{...TH0,color:"#D4845A"}}>{c}</th>)}{data.prodCols.map(c=><th key={c} style={{...TH0,color:"#6B94B0"}}>{c}</th>)}</tr></thead>
+          <tbody>{(()=>{const seen=new Set();const rows=filtered.filter(r=>{if(seen.has(r.date))return false;seen.add(r.date);return true;});
+            const sorted=rosterS.sort(rows,(x,f)=>{if(f==="date")return x.date;const bv=x.band[f];if(bv)return bv;const pv=x.prod[f];if(pv)return pv;return"";});
+            return sorted.map((r,i)=>
             <tr key={i} style={{borderBottom:"1px solid rgba(250,247,242,0.04)"}}><td style={TD}>{dateLink(r.date)}</td>
               {data.bandCols.map(c=><td key={c} style={TD}>{r.band[c]||"—"}</td>)}{data.prodCols.map(c=><td key={c} style={TD}>{r.prod[c]||"—"}</td>)}</tr>);})()}</tbody>
         </table></div></div>
