@@ -73,6 +73,7 @@ def sync():
 
     song_rows = []       # For data.csv
     person_photos = {}   # For photos.csv — {person_id: {name, photo_url}}
+    song_cache = {}      # Cache song details to avoid redundant API calls
 
     for st in service_types:
         st_id = st["id"]
@@ -91,7 +92,7 @@ def sync():
 
         for plan in plans:
             plan_id = plan["id"]
-            plan_date = plan["attributes"].get("sort_date", "")[:10]  # YYYY-MM-DD
+            plan_date = (plan["attributes"].get("sort_date") or "")[:10]  # YYYY-MM-DD
 
             # Get plan items (songs, headers, etc.)
             items = pco_get_all(
@@ -108,22 +109,24 @@ def sync():
             # Build a lookup of team members by position
             leaders = []
             for tm in team_members:
-                attrs = tm["attributes"]
-                tm_name = attrs.get("name", "")
-                tm_status = attrs.get("status", "")
-                tm_position = attrs.get("team_position_name", "")
-                photo_url = attrs.get("photo_thumbnail", "")
+                attrs = tm.get("attributes") or {}
+                tm_name = attrs.get("name") or ""
+                tm_status = attrs.get("status") or ""
+                tm_position = attrs.get("team_position_name") or ""
+                photo_url = attrs.get("photo_thumbnail") or ""
 
                 # Collect person photos
-                person_id = tm.get("relationships", {}).get("person", {}).get("data", {}).get("id")
+                person_rel = tm.get("relationships") or {}
+                person_data = (person_rel.get("person") or {}).get("data") or {}
+                person_id = person_data.get("id")
                 if person_id and tm_name:
                     person_photos[person_id] = {
                         "name": tm_name,
-                        "photo_url": photo_url or ""
+                        "photo_url": photo_url
                     }
 
                 # Track worship leaders (adjust position names to match your setup)
-                if tm_status == "C" and any(
+                if tm_status == "C" and tm_position and any(
                     keyword in tm_position.lower()
                     for keyword in ["leader", "worship", "music director"]
                 ):
@@ -132,32 +135,39 @@ def sync():
             leader_str = "; ".join(leaders) if leaders else ""
 
             for item in items:
-                attrs = item["attributes"]
-                item_type = attrs.get("item_type", "")
+                attrs = item.get("attributes") or {}
+                item_type = attrs.get("item_type") or ""
 
                 # Only process song items
                 if item_type != "song":
                     continue
 
-                title = attrs.get("title", "")
-                key = attrs.get("key_name", "")
-                arrangement = attrs.get("arrangement_name", attrs.get("description", ""))
+                title = attrs.get("title") or ""
+                key = attrs.get("key_name") or ""
+                arrangement = attrs.get("arrangement_name") or attrs.get("description") or ""
 
                 # Get song details if available
-                song_data = item.get("relationships", {}).get("song", {}).get("data")
-                song_id = song_data["id"] if song_data else ""
+                item_rel = item.get("relationships") or {}
+                song_rel = (item_rel.get("song") or {}).get("data")
+                song_id = song_rel["id"] if song_rel else ""
 
-                # Get CCLI and author from the song record
+                # Get CCLI and author from the song record (with caching)
                 ccli = ""
                 author = ""
                 if song_id:
-                    try:
-                        song_detail = pco_get(f"{BASE_URL}/songs/{song_id}")
-                        song_attrs = song_detail.get("data", {}).get("attributes", {})
-                        ccli = song_attrs.get("ccli_number", "") or ""
-                        author = song_attrs.get("author", "") or ""
-                    except Exception as e:
-                        print(f"    Warning: Could not fetch song {song_id}: {e}")
+                    if song_id in song_cache:
+                        ccli = song_cache[song_id]["ccli"]
+                        author = song_cache[song_id]["author"]
+                    else:
+                        try:
+                            song_detail = pco_get(f"{BASE_URL}/songs/{song_id}")
+                            song_attrs = (song_detail.get("data") or {}).get("attributes") or {}
+                            ccli = song_attrs.get("ccli_number") or ""
+                            author = song_attrs.get("author") or ""
+                            song_cache[song_id] = {"ccli": ccli, "author": author}
+                        except Exception as e:
+                            print(f"    Warning: Could not fetch song {song_id}: {e}")
+                            song_cache[song_id] = {"ccli": "", "author": ""}
 
                 song_rows.append({
                     "date": plan_date,
@@ -166,7 +176,7 @@ def sync():
                     "author": author,
                     "key": key,
                     "arrangement": arrangement,
-                    "ccli": ccli,
+                    "ccli": str(ccli),
                     "song_id": song_id,
                     "worship_leader": leader_str,
                 })
@@ -195,7 +205,7 @@ def sync():
                 "photo_url": info["photo_url"],
             })
 
-    print("\nDone! Data synced successfully.")
+    print(f"\nDone! Synced {len(song_rows)} songs, {len(person_photos)} people, {len(song_cache)} unique songs cached.")
 
 
 if __name__ == "__main__":
