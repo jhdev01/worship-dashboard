@@ -1,0 +1,43 @@
+name: Sync PCO Data
+
+on:
+  schedule:
+    # Runs every Monday at 6:00 AM UTC (Sunday 11 PM PT)
+    - cron: '0 6 * * 1'
+  workflow_dispatch: # Allows you to manually trigger from GitHub
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run PCO sync script
+        env:
+          PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
+          PCO_SECRET: ${{ secrets.PCO_SECRET }}
+        run: python scripts/sync_pco.py
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git diff --quiet public/data.csv public/photos.csv || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push updated data
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/data.csv public/photos.csv
+          git commit -m "chore: auto-sync PCO data [$(date -u '+%Y-%m-%d')]"
+          git push
