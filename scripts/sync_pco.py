@@ -133,9 +133,14 @@ def sync():
     st_id = st["id"]
     print(f"Using: {SERVICE_TYPE_NAME} (ID: {st_id})")
 
-    plans = api_all(f"{BASE}/service_types/{st_id}/plans",
+    # Fetch past plans
+    past_plans = api_all(f"{BASE}/service_types/{st_id}/plans",
                     {"filter": "past", "order": "-sort_date", "per_page": 25})[:MAX_PLANS]
-    print(f"  {len(plans)} plans")
+    # Fetch future/upcoming plans
+    future_plans = api_all(f"{BASE}/service_types/{st_id}/plans",
+                    {"filter": "future", "order": "sort_date", "per_page": 10})
+    plans = future_plans + past_plans
+    print(f"  {len(past_plans)} past + {len(future_plans)} upcoming = {len(plans)} plans")
 
     rows, people, song_cache = [], {}, {}
     all_band, all_prod = set(), set()
